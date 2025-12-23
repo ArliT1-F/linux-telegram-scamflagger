@@ -6,8 +6,8 @@ from telethon import TelegramClient, events
 # ==========================
 # CONFIG
 # ==========================
-API_ID = 123456
-API_HASH = "PASTE_API_HASH_HERE"
+API_ID = 12345678
+API_HASH = "YOUR_API_HASH_HERE"
 
 EVIDENCE_DIR = "evidence"
 
@@ -18,13 +18,39 @@ KEYWORDS = {
     "payment": 20,
     "whatsapp": 20,
     "telegram.me": 20,
-    "t.me/": 20
+    "t.me/": 20,
+    "babe": 10,
+    "sex": 20,
+    "nude": 10,
+    "xxx": 10,
+    "stock": 15,
+    "massage": 20,
+    "dm": 10,
+    "per hour": 10,
+    "1 shot": 20,
+    "1 hour": 20,
+    "2 shot": 25,
+    "paypal": 15,
+    "crypto": 15,
+    "bitcoin": 15,
+    "litecoin": 15,
+    "ethereum": 15,
+    "dear": 5,
+    "itunes": 15,
+    "gift card": 15,
+    "credit card": 15,
+    "bank": 15,
+    "card": 15,
+    "apple card": 20,
+    "apple pay": 20,
+    "giftcard": 20,
+    "steam giftcard": 30
 }
 
 PHONE_REGEX = re.compile(r"\+?\d[\d\s\-]{7,}")
 LINK_REGEX = re.compile(r"https?://\S+")
 
-LONG_MESSAGE_THRESHOLD = 300
+LONG_MESSAGE_THRESHOLD = 200
 LONG_MESSAGE_SCORE = 15
 
 PHONE_SCORE = 40
@@ -71,7 +97,7 @@ def analyze_message(text: str):
 def confidence_label(score):
     if score >= 60:
         return "HIGH"
-    if score >= 30:
+    if score >= 35:
         return "MEDIUM"
     return "LOW"
 
