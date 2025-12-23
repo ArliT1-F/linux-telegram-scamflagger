@@ -8,8 +8,8 @@ from telethon import TelegramClient, events
 # ==========================
 # CONFIG
 # ==========================
-API_ID = 123456
-API_HASH = "PASTE_API_HASH_HERE"
+API_ID = 12345678
+API_HASH = "YOUR_API_HASH_HERE"
 
 SESSION_NAME = "user_session"
 EVIDENCE_DIR = "evidence"
@@ -41,18 +41,14 @@ KEYWORDS = {
     "btc": 25,
     "usdt": 25,
     "whatsapp": 20,
-    "telegram": 15,
-    "snapchat": 15,
-    "instagram": 10,
-    "dm me": 15,
-    "add me on": 15,
-    "link in bio": 15,
+    "telegram.me": 20,
+    "t.me/": 20
 }
 
 PHONE_REGEX = re.compile(r"\+?\d[\d\s\-().]{7,}")
 LINK_REGEX = re.compile(r"https?://\S+|wa\.me/\S+|t\.me/\S+")
 
-LONG_MESSAGE_THRESHOLD = 300
+LONG_MESSAGE_THRESHOLD = 200
 LONG_MESSAGE_SCORE = 15
 
 PHONE_SCORE = 40
@@ -121,7 +117,11 @@ def analyze_message(text):
     return min(score, 100), reasons
 
 def confidence_label(score):
-    return "HIGH" if score >= 60 else "MEDIUM" if score >= 30 else "LOW"
+    if score >= 60:
+        return "HIGH"
+    if score >= 30:
+        return "MEDIUM"
+    return "LOW"
 
 # ==========================
 # EVIDENCE HANDLING
