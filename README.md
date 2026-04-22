@@ -114,6 +114,40 @@ Example response:
 }
 ```
 
+### Scam Registry (names + scam type + identifier)
+
+Entries are appended to a staging file on each new registry event:
+
+- `scam_registry_live.txt` (staging/live updates)
+
+The downloadable file is always available:
+
+- `GET /api/registry/download`
+
+But staged entries are only published into that downloadable file once per month:
+
+- `POST /api/registry/publish`
+- `GET /api/registry/download/status`
+
+Example add entry:
+
+```bash
+curl -X POST https://<your-deployment>/api/registry/entry \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Scammer Alias",
+    "identifier": "tg:123456",
+    "scam_type": "payment-redirect",
+    "score": 90,
+    "confidence": "HIGH"
+  }'
+```
+
+Status response includes:
+- `download_available` (always true once initialized)
+- `pending_entries` (waiting for next monthly publish)
+- `next_publication_at`
+
 ---
 
 ## Local Listener Setup (Telegram)
@@ -150,6 +184,10 @@ Optional environment variables:
 - `RETENTION_DAYS` (default `30`)
 - `FLAG_SCAN_LIMIT` (default `500`)
 - `EVIDENCE_DIR`, `WHITELIST_FILE`, `BLACKLIST_FILE`, `PAUSE_FLAG`
+- `REGISTRY_FILE` (default `scam_registry_live.txt`)
+- `REGISTRY_DOWNLOAD_DIR` (default `registry_downloads`)
+- `REGISTRY_META_FILE` (default `registry_download_meta.json`)
+- `DOWNLOAD_COOLDOWN_DAYS` (default `30`)
 
 ---
 

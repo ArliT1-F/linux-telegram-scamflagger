@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
-from flask import Flask, jsonify, render_template_string, request
+from pathlib import Path
+
+from flask import Flask, jsonify, render_template_string, request, send_file
 
 from detector import DEFAULT_CONFIG, analyze_message, confidence_label
+from registry import (
+    RegistryConfig,
+    append_registry_entry,
+    classify_scam_type,
+    get_download_status,
+    publish_registry_updates_if_due,
+)
 
 app = Flask(__name__)
 
 MAX_MESSAGE_LENGTH = 5000
+registry_config = RegistryConfig(
+    live_file=Path("scam_registry_live.txt"),
+    download_dir=Path("registry_downloads"),
+    download_meta_file=Path("registry_download_meta.json"),
+    cooldown_days=30,
+)
 
 HOME_HTML = """
 <!doctype html>
@@ -207,6 +222,88 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/registry/entry", methods=["POST"])
+def add_registry_entry():
+    payload = request.get_json(silent=True) or {}
+    name = payload.get("name", "")
+    identifier = payload.get("identifier", "")
+    scam_type = payload.get("scam_type", "")
+
+    if not isinstance(name, str) or not name.strip():
+        return jsonify({"error": "`name` must be a non-empty string"}), 400
+    if not isinstance(identifier, str) or not identifier.strip():
+        return jsonify({"error": "`identifier` must be a non-empty string"}), 400
+    if not isinstance(scam_type, str) or not scam_type.strip():
+        return jsonify({"error": "`scam_type` must be a non-empty string"}), 400
+
+    score = payload.get("score", 0)
+    confidence = payload.get("confidence", "MEDIUM")
+    try:
+        score = int(score)
+    except (TypeError, ValueError):
+        return jsonify({"error": "`score` must be an integer"}), 400
+    if not isinstance(confidence, str):
+        return jsonify({"error": "`confidence` must be a string"}), 400
+
+    append_registry_entry(
+        registry_config,
+        name=name,
+        identifier=identifier,
+        scam_type=scam_type,
+        score=max(0, min(score, 100)),
+        confidence=confidence.strip().upper() or "MEDIUM",
+    )
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/registry/download/status", methods=["GET"])
+def registry_download_status():
+    return jsonify(get_download_status(registry_config))
+
+
+@app.route("/api/registry/publish", methods=["POST"])
+def publish_registry_updates():
+    status = publish_registry_updates_if_due(registry_config)
+    if status["publish_allowed_now"] and status["appended_entries"] == 0:
+        return jsonify(
+            {
+                "status": "ok",
+                "message": "No pending entries to publish; download remains available.",
+                "download_status": status,
+            }
+        )
+    if not status["published_this_call"]:
+        return jsonify(
+            {
+                "status": "cooldown_active",
+                "message": "Download file is still available. Staged entries publish once per month.",
+                "download_status": status,
+            }
+        ), 429
+
+    return jsonify(
+        {
+            "status": "ok",
+            "download_status": status,
+            "appended_entries": status["appended_entries"],
+        }
+    )
+
+
+@app.route("/api/registry/download", methods=["GET"])
+def download_registry_snapshot():
+    status = get_download_status(registry_config)
+    snapshot_file = status.get("snapshot_file")
+    if not snapshot_file:
+        return jsonify({"error": "No downloadable registry snapshot is set up yet."}), 404
+
+    path = Path(snapshot_file)
+    if not path.exists():
+        return jsonify({"error": "Snapshot file is missing on server."}), 404
+
+    return send_file(path, as_attachment=True, download_name=path.name, mimetype="text/plain")
+
+
 @app.route("/api/analyze", methods=["POST", "OPTIONS"])
 def analyze():
     if request.method == "OPTIONS":
@@ -225,11 +322,25 @@ def analyze():
 
     score, reasons = analyze_message(message)
     confidence = confidence_label(score)
+    inferred_scam_type = classify_scam_type(reasons)
+    maybe_name = payload.get("name")
+    maybe_identifier = payload.get("identifier")
+    if isinstance(maybe_name, str) and maybe_name.strip() and isinstance(maybe_identifier, str) and maybe_identifier.strip():
+        append_registry_entry(
+            registry_config,
+            name=maybe_name,
+            identifier=maybe_identifier,
+            scam_type=inferred_scam_type,
+            score=score,
+            confidence=confidence,
+        )
+
     return jsonify(
         {
             "score": score,
             "confidence": confidence,
             "reasons": reasons,
+            "scam_type": inferred_scam_type,
             "threshold": DEFAULT_CONFIG.save_threshold,
             "should_save": score >= DEFAULT_CONFIG.save_threshold,
         }

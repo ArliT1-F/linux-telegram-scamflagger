@@ -15,3 +15,6 @@ pause.flag
 evidence/
 whitelist.txt
 blacklist.txt
+scam_registry_live.txt
+registry_download_meta.json
+registry_downloads/

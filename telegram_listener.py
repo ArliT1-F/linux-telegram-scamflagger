@@ -9,6 +9,11 @@ from pathlib import Path
 from telethon import TelegramClient, events
 
 from detector import DEFAULT_CONFIG, analyze_message, confidence_label
+from registry import (
+    RegistryConfig,
+    append_registry_entry,
+    classify_scam_type,
+)
 
 # ==========================
 # CONFIG
@@ -25,6 +30,10 @@ PAUSE_FLAG = Path(os.getenv("PAUSE_FLAG", "pause.flag"))
 RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", "30"))
 SAVE_THRESHOLD = int(os.getenv("SAVE_THRESHOLD", str(DEFAULT_CONFIG.save_threshold)))
 FLAG_SCAN_LIMIT = int(os.getenv("FLAG_SCAN_LIMIT", "500"))
+REGISTRY_FILE = Path(os.getenv("REGISTRY_FILE", "scam_registry_live.txt"))
+REGISTRY_DOWNLOAD_DIR = Path(os.getenv("REGISTRY_DOWNLOAD_DIR", "registry_downloads"))
+REGISTRY_META_FILE = Path(os.getenv("REGISTRY_META_FILE", "registry_download_meta.json"))
+DOWNLOAD_COOLDOWN_DAYS = int(os.getenv("DOWNLOAD_COOLDOWN_DAYS", "30"))
 if SAVE_THRESHOLD != DEFAULT_CONFIG.save_threshold:
     print(
         f"[!] SAVE_THRESHOLD={SAVE_THRESHOLD} differs from detector "
@@ -43,6 +52,12 @@ if API_ID <= 0 or not API_HASH:
     )
 
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+registry_config = RegistryConfig(
+    live_file=REGISTRY_FILE,
+    download_dir=REGISTRY_DOWNLOAD_DIR,
+    download_meta_file=REGISTRY_META_FILE,
+    cooldown_days=DOWNLOAD_COOLDOWN_DAYS,
+)
 
 
 def load_ids(path: Path) -> set[int]:
@@ -59,6 +74,28 @@ blacklist = load_ids(BLACKLIST_FILE)
 # ==========================
 # EVIDENCE HANDLING
 # ==========================
+def _best_sender_name(sender) -> str:
+    username = getattr(sender, "username", None)
+    if username:
+        return f"@{username}"
+
+    first = (getattr(sender, "first_name", "") or "").strip()
+    last = (getattr(sender, "last_name", "") or "").strip()
+    full = f"{first} {last}".strip()
+    return full or "unknown"
+
+
+def _update_registry(name: str, identifier: str, score: int, reasons: list[str]) -> None:
+    append_registry_entry(
+        registry_config,
+        name=name,
+        identifier=identifier,
+        scam_type=classify_scam_type(reasons),
+        score=score,
+        confidence=confidence_label(score),
+    )
+
+
 def save_evidence(sender_id: int, message: str, score: int, reasons: list[str]) -> None:
     now = datetime.now()
     base = EVIDENCE_DIR / now.strftime("%Y-%m-%d")
@@ -129,6 +166,9 @@ async def handler(event):
     if score < SAVE_THRESHOLD and sender.id not in blacklist:
         return
 
+    sender_name = _best_sender_name(sender)
+    _update_registry(sender_name, str(sender.id), score, reasons)
+
     threading.Thread(
         target=save_evidence,
         args=(sender.id, text, score, reasons),
@@ -159,6 +199,9 @@ async def flag_chat(event):
             score, reasons = analyze_message(text)
             if score >= SAVE_THRESHOLD:
                 saved += 1
+                sender = await message.get_sender()
+                sender_name = _best_sender_name(sender) if sender else "unknown"
+                _update_registry(sender_name, str(message.sender_id), score, reasons)
                 save_evidence(message.sender_id, text, score, reasons)
         await event.respond(f"Flag scan complete. Scanned {scanned} messages, saved {saved}.")
 
