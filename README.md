@@ -1,170 +1,182 @@
-# Telegram Scam & Promo Evidence Listener
+# Telegram Scam & Promo Analyzer (Listener + Vercel API)
 
-A **privacy-first Telegram listener** that runs locally on Linux and **automatically documents suspicious messages** (scams, promotions, escort ads, off-platform funnels) so they can be **reported with proper evidence** — without screenshots, bots replying, or mass surveillance.
+A privacy-first message risk analyzer with two deployment modes:
 
-This tool **does not punish or interact with anyone**.  
-All enforcement is left to Telegram, Tinder, or the relevant platform.
+1. **Telegram listener (local runtime)** for evidence capture from your own account.
+2. **Vercel-hosted web app + API** for on-demand message scoring in the browser.
 
----
-
-## ✨ Key Goals
-
-- Detect scam / promo patterns early
-- Avoid storing innocent conversations
-- Reduce manual screenshots and phone storage usage
-- Provide **clear, explainable evidence** for reports
-- Respect user privacy at all times
+This project focuses on **documentation and risk scoring**, not harassment or enforcement automation.
 
 ---
 
-## 🚦 What This Tool Does
+## What Was Improved
 
-- Runs continuously on your **Linux Mint (or any Linux) laptop**
-- Listens to **your own Telegram account** (not a bot account)
-- Analyzes incoming messages **in memory only**
-- Assigns a **confidence score (0–100)** based on scam signals
-- Saves **only flagged messages** as evidence
-- Leaves all clean messages untouched and discarded
-
----
-
-## ❌ What This Tool Does NOT Do
-
-- ❌ No auto-replies
-- ❌ No mass reporting
-- ❌ No conversation logging
-- ❌ No scraping or crawling
-- ❌ No WhatsApp or Tinder automation
-- ❌ No public lists or shaming
-
-This is a **documentation tool**, not a harassment or enforcement system.
+- Added a **hostable Vercel app** (`api/index.py`) with:
+  - `GET /` interactive analyzer UI
+  - `GET /api/health` health check
+  - `POST /api/analyze` JSON scoring API
+- Refactored scoring into a shared `detector.py` module used by both the listener and API.
+- Improved listener reliability:
+  - Uses environment variables for secrets (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`)
+  - Replaces unsafe shell deletes with Python `shutil.rmtree`
+  - Fixes `/flag` background scan to correctly iterate async messages
+  - More robust evidence folder naming to avoid collisions
+- Added deployment files:
+  - `vercel.json`
+  - `requirements.txt`
+  - `.gitignore`
 
 ---
 
-## 🧠 Detection Signals (v1)
+## Architecture
 
-Each message is scored using transparent rules:
+```text
+detector.py          # Shared scoring logic + confidence labels
+telegram_listener.py # Local Telethon listener + evidence capture
+api/index.py         # Flask app for Vercel hosting (UI + API)
+```
 
-- Phone number detection
-- External links
-- Keywords (OnlyFans, escort, payment, WhatsApp, Telegram redirects)
-- Unusually long messages (spam-style walls of text)
+---
 
-Each signal adds points, producing a **confidence score**:
+## Detection Signals (Rule-Based)
+
+Each message is scored transparently using:
+
+- suspicious keywords (adult, payment, redirect/funnel)
+- phone number detection
+- external link detection
+- long-message heuristic
+- combo bonuses (e.g., payment + redirect)
+
+Confidence mapping:
 
 | Score | Meaning |
-|------|--------|
-| 0–29 | Low (ignored) |
-| 30–59 | Medium |
-| 60–100 | High |
+|------:|---------|
+| 0–29  | LOW |
+| 30–59 | MEDIUM |
+| 60–100| HIGH |
 
-Only **medium and high confidence** messages are saved.
+Default save threshold: **30**
 
 ---
 
-## 📁 Evidence Output Structure
+## Deploy on Vercel
 
-When a message is flagged, a folder is created:
-```yaml
-evidence/YYYY-MM-DD_HH-MM-SS/
-├── platform.txt
-├── sender.txt
-├── message.txt
-├── confidence.txt
-└── reasons.txt
+### 1) Install Vercel CLI (optional local flow)
+
+```bash
+npm i -g vercel
 ```
-This folder can be zipped and attached directly to a report
+
+### 2) Deploy
+
+From repo root:
+
+```bash
+vercel
+```
+
+For production:
+
+```bash
+vercel --prod
+```
+
+Vercel will use `vercel.json` and route all traffic to the Flask app in `api/index.py`.
 
 ---
 
-## 🔐 Privacy Design
-Privacy is enforced technically, not by policy:
+## API Usage
 
-- No databases
-- No chat history storage
-- No full conversations saved
-- Only flagged messages are written to disk
-- All analysis is local and offline
-- Innocent messages are discarded immediately
+### Health
+
+```bash
+curl https://<your-deployment>/api/health
+```
+
+### Analyze
+
+```bash
+curl -X POST https://<your-deployment>/api/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Hey add me on WhatsApp +1 555 555 5555"}'
+```
+
+Example response:
+
+```json
+{
+  "score": 80,
+  "confidence": "HIGH",
+  "reasons": ["whatsapp (+20)", "phone number (+40)", "adult + redirect combo (+20)"],
+  "threshold": 30,
+  "should_save": true
+}
+```
 
 ---
 
-## 🛠 Requirements
-- Linux (tested on Linux Mint)
-- Python 3.9+
+## Local Listener Setup (Telegram)
+
+### Requirements
+
+- Python 3.10+
 - Telegram account
 
-Python dependencies:
+Install dependencies:
+
 ```bash
-pip install telethon
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
----
 
-## 🔑 Telegram API Setup (One-Time)
-**1.** Go to https://my.telegram.org
+Set credentials:
 
-**2.** Log in with your phone number
+```bash
+export TELEGRAM_API_ID="12345678"
+export TELEGRAM_API_HASH="your_api_hash"
+```
 
-**3.** Open API development tools
+Run listener:
 
-**4.** Copy:
-- api_id
-- api_hash
-
-These authenticate your own Telegram account (similar to Telegram Desktop).
-
----
-
-## ▶️ Running the Listener
 ```bash
 python3 telegram_listener.py
 ```
-On first run:
-- Telegram will ask for a login code
-- Enter it once
-- A local session file is created
 
-After that, the listener can run countinuously.
+Optional environment variables:
 
----
-
-## ⚖️ Legal & Ethical Notes
-- Telegram MTProto user sessions are officially supported
-- This tool only observes messages you already recieve
-- No ToS circumvention, impersonation, or automation
-- Reporting decisions remain fully manual
-
-If you are unsure about legality in your jurisdiction, **DO NOT** use the tool.
+- `SAVE_THRESHOLD` (default `30`)
+- `RETENTION_DAYS` (default `30`)
+- `FLAG_SCAN_LIMIT` (default `500`)
+- `EVIDENCE_DIR`, `WHITELIST_FILE`, `BLACKLIST_FILE`, `PAUSE_FLAG`
 
 ---
 
-## 🧭 Roadmap (Optional Enhancements)
-- First-message detection
-- Hash-only scam pattern detection
-- Encrypted evidence folders
-- One-click ZIP report export
-- System tray indicator
-- Systemd service (run on boot)
+## Evidence Output
+
+Flagged content is saved under:
+
+```yaml
+evidence/YYYY-MM-DD/<sender_id>_<HH-MM-SS_microseconds>/
+├── message.txt
+└── meta.json
+```
+
+`meta.json` contains platform, sender id, timestamp, score, confidence, and reasons.
 
 ---
 
-## 📌 Disclaimer
-This project is provided for **personal use** and **self-protection**.
-The author is not responsible for misuse or ToS violations caused by modifications.
+## Privacy Notes
+
+- No database by default
+- No full-chat archival
+- Only suspicious messages are persisted
+- Listener logic runs locally on your machine
 
 ---
 
-## ❤️ Philosophy
+## Disclaimer
 
-        Don't spy.
-        Don't bait.
-        Don't harass.
-        Just document and report.
-
----
-
-If anyone wants me to add something new... this is what I have in mind:
-- Add a **threat model** section
-- Add **installation as a systemd service**
-
-Ps: These are the features that I'm currently willing to add next to the project.
+Use this project responsibly and in compliance with local law and platform terms.  
+It is intended for personal safety workflows and evidence organization.
