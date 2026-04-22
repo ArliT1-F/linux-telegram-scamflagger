@@ -1,0 +1,20 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.*
+
+# Telegram client state and generated evidence
+*.session
+*.session-journal
+pause.flag
+evidence/
+whitelist.txt
+blacklist.txt
+scam_registry_live.txt
+registry_download_meta.json
+registry_downloads/
