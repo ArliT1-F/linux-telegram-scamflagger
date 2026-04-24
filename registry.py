@@ -169,8 +169,8 @@ def publish_registry_updates_if_due(
     published_this_call = False
 
     if can_publish:
-        rows = _pending_rows(config)
         with _WRITE_LOCK:
+            rows = _pending_rows(config)
             if rows:
                 with published_file.open("a", encoding="utf-8") as handle:
                     handle.writelines(rows)
